@@ -1,0 +1,34 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx-deploy
+  labels:
+    env: demo
+spec:
+  replicas: 5
+  revisionHistoryLimit: 5   # keep last 5 ReplicaSets for rollback
+  progressDeadlineSeconds: 60   # fail deployment if rollout takes longer than 60s
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0   # ensure zero downtime during update
+      maxSurge: 1         # allow one extra pod above desired count
+    # rollingUpdate: # use this while you have more than 4 replicas
+    #   maxUnavailable: 25%   # ensure zero downtime during update (note that this is for many pods)
+    #   maxSurge: 25%         # allow one extra pod above desired count (note that this is for many pods)
+  selector:
+    matchLabels:
+      env: demo
+  template:
+    metadata:
+      name: nginx-pod
+      labels:
+        env: demo
+        type: frontend
+    spec:
+      containers:
+      - name: nginx-container
+        image: nginx
+        ports:
+        - containerPort: 80
+
