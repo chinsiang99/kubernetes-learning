@@ -107,6 +107,8 @@ kubectl get all --all-namespaces
 - Use Namespaces to separate environments (e.g. dev, staging, prod), teams, or logical modules.  
 - Use RBAC, ResourceQuotas, and NetworkPolicies at the namespace level to further isolate and control.
 
+> cat /etc/resolv.conf
+
 ---
 
 ## 🔁 How to Try It Yourself  
