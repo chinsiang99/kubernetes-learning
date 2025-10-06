@@ -169,5 +169,142 @@ kubectl logs -l job-name=manual-backup -n ops --tail=100
 
 ---
 
-## Change Log
-- 2025-10-06: Initial notes generated for Day 12 video.
+
+# README: Debugging Kubernetes CronJobs
+
+## 🧠 What is a CronJob?
+A **CronJob** in Kubernetes allows you to schedule **Jobs** to run periodically, similar to a Linux `cron` task.
+
+Example:
+```yaml
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: db-backup
+spec:
+  schedule: "*/5 * * * *"  # Every 5 minutes
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+          - name: backup
+            image: busybox
+            command: ["echo", "Performing backup..."]
+          restartPolicy: OnFailure
+```
+This runs a **Job** every 5 minutes.
+
+---
+
+## 🔍 Step-by-Step Debugging Guide
+
+### 1️⃣ Check if the CronJob Exists
+```bash
+kubectl get cronjob
+```
+Look for the CronJob in the list:
+```
+NAME          SCHEDULE    SUSPEND   ACTIVE   LAST SCHEDULE   AGE
+db-backup     */5 * * * * False     0        3m50s           1h
+```
+If `LAST SCHEDULE` shows a recent timestamp — your CronJob **is running**.
+
+---
+
+### 2️⃣ List Jobs Created by the CronJob
+Each CronJob run creates a **Job** object.
+```bash
+kubectl get jobs --watch
+```
+Example output:
+```
+NAME                    COMPLETIONS   DURATION   AGE
+db-backup-28389123      1/1           5s         3m
+db-backup-28389124      0/1           10s        1m
+```
+
+If there are **no Jobs**, see step 5 below.
+
+---
+
+### 3️⃣ Inspect the Job Created
+```bash
+kubectl describe job db-backup-28389123
+```
+Check:
+- Pod statuses (Succeeded/Failed)
+- Start/Completion time
+- Events section (for scheduling or image errors)
+
+---
+
+### 4️⃣ Inspect the Pod Logs
+Each Job spawns a **Pod**. Check its logs:
+```bash
+kubectl get pods --selector=job-name=db-backup-28389123
+kubectl logs <pod-name>
+```
+If your CronJob ran but failed inside the container, the logs will show why.
+
+---
+
+### 5️⃣ If No Jobs Are Being Created
+If your CronJob isn’t spawning Jobs, check the following:
+
+| Problem | Command | Fix |
+|----------|----------|-----|
+| CronJob suspended | `kubectl get cronjob db-backup -o yaml | grep suspend` | Set `suspend: false` |
+| Invalid schedule | Review the `schedule:` field | Verify syntax with [crontab.guru](https://crontab.guru/) |
+| Controller issues | `kubectl get events -n <namespace>` | Look for `FailedCreate` or controller errors |
+| Missing permissions | Check RBAC / ServiceAccount | Ensure it can create Jobs |
+| Timezone mismatch | Cluster uses UTC | Adjust schedule accordingly |
+
+---
+
+### 6️⃣ View Detailed History
+```bash
+kubectl describe cronjob db-backup
+```
+You’ll see:
+- `Last schedule time`
+- `Active jobs`
+- `Successful/failed job history limits`
+
+---
+
+### 7️⃣ Run Manually for Testing
+```bash
+kubectl create job --from=cronjob/db-backup db-backup-manual
+```
+This runs the CronJob **immediately** as a Job — great for debugging.
+
+---
+
+## 🧰 Common Mistakes
+
+✅ Using wrong timezone (Kubernetes CronJobs use **UTC**)  
+✅ Not setting `restartPolicy: OnFailure`  
+✅ Image pull issues — check `kubectl describe pod`  
+✅ Misconfigured command syntax or entrypoint errors  
+
+---
+
+## ✅ Summary
+
+| Step | What to Check | Command |
+|------|----------------|----------|
+| 1 | CronJob existence & schedule | `kubectl get cronjob` |
+| 2 | Jobs spawned | `kubectl get jobs` |
+| 3 | Job details | `kubectl describe job <job-name>` |
+| 4 | Logs | `kubectl logs <pod-name>` |
+| 5 | CronJob configuration | `kubectl describe cronjob <cronjob-name>` |
+| 6 | Run manually | `kubectl create job --from=cronjob/<name> test-job` |
+
+---
+
+## 🧩 Tip
+Use this command to quickly see the most recent CronJob logs:
+```bash
+kubectl logs $(kubectl get pods --sort-by=.metadata.creationTimestamp -l job-name=$(kubectl get jobs --sort-by=.metadata.creationTimestamp -o jsonpath='{.items[-1:].metadata.name}') -o jsonpath='{.items[-1:].metadata.name}')
+```
